@@ -13,6 +13,12 @@ public class PriceRepository(AppDbContext db) : IPriceRepository
             .ToListAsync()
             .ContinueWith(t => (IList<EodPrice>)t.Result);
 
+    public Task<EodPrice?> GetLatestAsync(int securityId) =>
+        db.EodPrices
+            .Where(p => p.SecurityId == securityId)
+            .OrderByDescending(p => p.Date)
+            .FirstOrDefaultAsync();
+
     public async Task UpsertAsync(int securityId, IEnumerable<EodPrice> prices)
     {
         foreach (var price in prices)

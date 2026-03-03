@@ -4,6 +4,24 @@
 
 ---
 
+## v0.1.0-beta.7 — 2026-03-04
+
+### Added
+- `MarketZone` enum: `US`, `EU`, `ASIA`, `FX` — stored as string in DB
+- `MarketZone` field on `Security` — defaults to `US` for equities/bonds, `FX` for forex
+- `EodPriceBackgroundService` — runs hourly; after each zone's market close, fetches and stores settled EOD price, high, low, market cap for all securities in that zone
+- `IPriceRepository.GetLatestAsync` — returns most recent EOD record for a security
+
+### Changed
+- Watchlist `GET` no longer auto-upserts on refresh — EOD writes are now exclusively managed by the background service
+- Watchlist response restructured: `live` (Day% only) and `eod` (close, high, low, marketCap, date) are separate objects
+- `CreateSecurityRequest` accepts optional `MarketZone` (auto-defaults if omitted)
+
+### Migrations
+- `AddMarketZoneToSecurity`
+
+---
+
 ## v0.1.0-beta.6 — 2026-03-03
 
 ### Added

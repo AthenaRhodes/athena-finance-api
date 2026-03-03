@@ -9,7 +9,10 @@ namespace AthenaFinance.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class WatchlistController(AppDbContext db, IFinnhubService finnhub, IPriceRepository priceRepo) : ControllerBase
+public class WatchlistController(
+    AppDbContext db,
+    IFinnhubService finnhub,
+    IPriceRepository priceRepo) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetWatchlist()
@@ -19,30 +22,20 @@ public class WatchlistController(AppDbContext db, IFinnhubService finnhub, IPric
             .OrderBy(w => w.Security.Symbol)
             .ToListAsync();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var result = new List<object>();
 
         foreach (var item in items)
         {
+            // Live: only Day% (intraday, refreshes every 30s on frontend)
             var quote = await finnhub.GetQuoteAsync(item.Security.Symbol);
+
+            // EOD: price, market cap from DB
+            var eod = await priceRepo.GetLatestAsync(item.SecurityId);
+
+            // Profile + metrics for non-price display fields
             var isEquity = item.Security.AssetType == AssetType.Equity;
             var profile = isEquity ? await finnhub.GetProfileAsync(item.Security.Symbol) : null;
             var metrics = isEquity ? await finnhub.GetMetricsAsync(item.Security.Symbol) : null;
-
-            // Persist today's snapshot
-            if (quote is not null)
-            {
-                await priceRepo.UpsertAsync(item.SecurityId, [new EodPrice
-                {
-                    Date = today,
-                    Open = quote.Open,
-                    High = quote.High,
-                    Low = quote.Low,
-                    Close = quote.CurrentPrice,
-                    Volume = 0,
-                    MarketCapMillions = profile?.MarketCapMillions
-                }]);
-            }
 
             result.Add(new
             {
@@ -50,13 +43,27 @@ public class WatchlistController(AppDbContext db, IFinnhubService finnhub, IPric
                 item.Security.Symbol,
                 item.Security.Name,
                 item.Security.AssetType,
+                item.Security.MarketZone,
                 item.Security.Currency,
                 item.AddedAt,
-                Quote = quote,
-                MarketCapMillions = profile?.MarketCapMillions,
                 Industry = profile?.Industry,
                 Logo = profile?.Logo,
-                Metrics = metrics
+                // Live intraday — Day% only
+                Live = quote is null ? null : new
+                {
+                    DayChangePercent = quote.PercentChange,
+                },
+                // EOD from DB — price, market cap, date
+                Eod = eod is null ? null : new
+                {
+                    Date = eod.Date,
+                    Close = eod.Close,
+                    High = eod.High,
+                    Low = eod.Low,
+                    MarketCapMillions = eod.MarketCapMillions
+                },
+                // Performance metrics from Finnhub (based on EOD data on their side)
+                YtdReturn = metrics?.YtdReturn,
             });
         }
 

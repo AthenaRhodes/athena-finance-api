@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasIndex(s => s.Symbol).IsUnique();
             e.Property(s => s.AssetType).HasConversion<string>();
+            e.Property(s => s.MarketZone).HasConversion<string>();
         });
 
         modelBuilder.Entity<EodPrice>(e =>

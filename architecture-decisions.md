@@ -21,3 +21,14 @@
 | 10 | **CORS policy: localhost:5173 in dev** | Frontend runs on Vite's default port. CORS locked to local dev only; production policy TBD. |
 | 11 | **Auto-migration on startup (dev only)** | EF Core migrations run automatically in `Development` environment for convenience. Production will require explicit migration steps. |
 | 12 | **Frontend auto-refresh interval: 30 seconds** | Balance between live feel and Finnhub free-tier rate limits. Configurable in a future version. |
+
+---
+
+## v0.1.0-beta.7 — 2026-03-04
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| 13 | **Strict separation of live vs EOD data** | Price, market cap, and YTD are EOD-based and read from the local DB. Only Day% is fetched live from Finnhub on each refresh. Prevents displaying intraday snapshots as settled prices. |
+| 14 | **EOD writes via background service only** | `EodPriceBackgroundService` is the sole writer to `EodPrices`. Runs hourly; triggers after each market zone closes. Prevents the watchlist refresh from accidentally overwriting settled EOD records with intraday values. |
+| 15 | **MarketZone on Security** | Each security belongs to a market zone (US, EU, ASIA, FX) which determines when its EOD is captured. Defaults: equities/bonds → US, forex → FX. Can be overridden at creation. |
+| 16 | **Stale EOD warning in UI** | If the latest EOD record in DB is >1 trading day old, the UI shows a yellow badge. This surfaces data quality issues (e.g. market holiday, missed fetch) without hiding the data. |

@@ -41,6 +41,9 @@ builder.Services.AddHttpClient<IFinnhubService, FinnhubService>(client =>
 builder.Services.AddScoped<ISecurityRepository, SecurityRepository>();
 builder.Services.AddScoped<IPriceRepository, PriceRepository>();
 
+// Background services
+builder.Services.AddHostedService<EodPriceBackgroundService>();
+
 // CORS for local frontend dev
 builder.Services.AddCors(options =>
 {

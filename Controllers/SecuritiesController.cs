@@ -44,13 +44,21 @@ public class SecuritiesController(ISecurityRepository repo, IFinnhubService finn
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { message = "Could not resolve name for this symbol." });
 
+        // Default market zone by asset type if not specified
+        var marketZone = request.MarketZone ?? request.AssetType switch
+        {
+            AssetType.Forex => MarketZone.FX,
+            _ => MarketZone.US
+        };
+
         var security = new Security
         {
             Symbol = request.Symbol,
             Name = name,
             AssetType = request.AssetType,
             Exchange = exchange,
-            Currency = currency
+            Currency = currency,
+            MarketZone = marketZone
         };
 
         var created = await repo.CreateAsync(security);
@@ -70,5 +78,6 @@ public record CreateSecurityRequest(
     AssetType AssetType,
     string? Name,
     string? Exchange,
-    string? Currency
+    string? Currency,
+    MarketZone? MarketZone
 );

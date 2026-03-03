@@ -8,6 +8,7 @@ public class Security
     public AssetType AssetType { get; set; }
     public string Exchange { get; set; } = string.Empty;
     public string Currency { get; set; } = "USD";
+    public MarketZone MarketZone { get; set; } = MarketZone.US;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<EodPrice> Prices { get; set; } = new List<EodPrice>();
