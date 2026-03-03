@@ -30,6 +30,19 @@ public class FrankfurterService(HttpClient httpClient, ILogger<FrankfurterServic
     public Task<ForexRate?> GetHistoricalRateAsync(string baseCcy, string quoteCcy, DateOnly date) =>
         FetchAsync(date.ToString("yyyy-MM-dd"), baseCcy, quoteCcy);
 
+    public async Task<decimal?> GetYtdReturnAsync(string baseCcy, string quoteCcy)
+    {
+        var today = await FetchAsync("latest", baseCcy, quoteCcy);
+        if (today is null) return null;
+
+        // First trading day of the current year (ECB doesn't publish Jan 1)
+        var yearStart = new DateOnly(today.Date.Year, 1, 2);
+        var startRate = await FetchAsync(yearStart.ToString("yyyy-MM-dd"), baseCcy, quoteCcy);
+        if (startRate is null || startRate.Rate == 0) return null;
+
+        return Math.Round((today.Rate - startRate.Rate) / startRate.Rate * 100, 4);
+    }
+
     private async Task<ForexRate?> FetchAsync(string dateOrLatest, string baseCcy, string quoteCcy)
     {
         try

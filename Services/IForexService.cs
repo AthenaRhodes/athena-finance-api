@@ -15,6 +15,9 @@ public interface IForexService
     /// <summary>Returns the ECB rate for a specific date.</summary>
     Task<ForexRate?> GetHistoricalRateAsync(string baseCcy, string quoteCcy, DateOnly date);
 
+    /// <summary>Returns YTD return % using the first available ECB rate of the current year.</summary>
+    Task<decimal?> GetYtdReturnAsync(string baseCcy, string quoteCcy);
+
     /// <summary>Parses "OANDA:EUR_USD" → ("EUR", "USD"). Returns null if format invalid.</summary>
     static (string Base, string Quote)? ParseSymbol(string symbol)
     {

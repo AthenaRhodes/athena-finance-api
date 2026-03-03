@@ -47,6 +47,7 @@ public class WatchlistController(
                     var (rates, yesterday) = await forex.GetRatesAsync(parsed.Value.Base, parsed.Value.Quote);
                     if (rates is not null && yesterday is not null && yesterday.Rate != 0)
                         dayChangePct = Math.Round((rates.Rate - yesterday.Rate) / yesterday.Rate * 100, 4);
+                    ytdReturn = await forex.GetYtdReturnAsync(parsed.Value.Base, parsed.Value.Quote);
                 }
             }
             else

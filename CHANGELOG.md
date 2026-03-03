@@ -94,6 +94,13 @@
 
 ---
 
+## v0.1.0-beta.10 — 2026-03-04
+
+### Added
+- Forex YTD % calculated from Frankfurter.app — first ECB trading day of the year (Jan 2) vs today
+
+---
+
 ## v0.1.0-beta.9 — 2026-03-04
 
 ### Added
