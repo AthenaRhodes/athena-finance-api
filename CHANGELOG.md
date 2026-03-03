@@ -91,3 +91,13 @@
 - Swagger UI available in Development at `/swagger`
 - CORS configured for local frontend dev (`localhost:5173`, `localhost:5174`)
 - `.gitignore` excludes `bin/`, `obj/`, `logs/`, `appsettings.Development.json`
+
+---
+
+## v0.1.0-beta.8 — 2026-03-04
+
+### Added
+- `POST /api/admin/backfill?date=YYYY-MM-DD` — manually backfill EOD prices for all watchlisted securities
+- Defaults to yesterday if no date provided; rejects weekends
+- Uses `previousClose` from Finnhub quote (free tier limitation — full historical OHLC requires paid plan)
+- High/Low stored as 0 when historical data unavailable (clearly flagged in logs)
