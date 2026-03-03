@@ -4,6 +4,17 @@
 
 ---
 
+## v0.1.0-beta.5 — 2026-03-03
+
+### Added
+- `GetMetricsAsync` in `FinnhubService` — fetches performance metrics from Finnhub `/stock/metric`
+- Watchlist response now includes `metrics`: YTD return, 5D/13W/26W/52W returns, 52W high/low with dates (equities only)
+
+### Notes
+- Historical candle data (`/stock/candle`) is not available on Finnhub free tier — metrics endpoint used instead
+
+---
+
 ## v0.1.0-beta.4 — 2026-03-03
 
 ### Added

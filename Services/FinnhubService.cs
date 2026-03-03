@@ -34,6 +34,42 @@ public class FinnhubService(HttpClient httpClient, IConfiguration config, ILogge
         }
     }
 
+    public async Task<FinnhubMetrics?> GetMetricsAsync(string symbol)
+    {
+        try
+        {
+            var response = await httpClient.GetAsync($"stock/metric?symbol={symbol}&metric=all&token={_apiKey}");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(json);
+            var m = doc.RootElement.GetProperty("metric");
+
+            decimal? Get(string key) =>
+                m.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.Number
+                    ? el.GetDecimal() : null;
+            string? GetStr(string key) =>
+                m.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String
+                    ? el.GetString() : null;
+
+            return new FinnhubMetrics(
+                YtdReturn:   Get("yearToDatePriceReturnDaily"),
+                Return5D:    Get("5DayPriceReturnDaily"),
+                Return13W:   Get("13WeekPriceReturnDaily"),
+                Return26W:   Get("26WeekPriceReturnDaily"),
+                Return52W:   Get("52WeekPriceReturnDaily"),
+                High52W:     Get("52WeekHigh"),
+                Low52W:      Get("52WeekLow"),
+                High52WDate: GetStr("52WeekHighDate"),
+                Low52WDate:  GetStr("52WeekLowDate")
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fetch metrics for {Symbol}", symbol);
+            return null;
+        }
+    }
+
     public async Task<IList<FinnhubSearchResult>> SearchAsync(string query)
     {
         try

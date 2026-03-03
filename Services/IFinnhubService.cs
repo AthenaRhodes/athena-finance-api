@@ -19,6 +19,18 @@ public record FinnhubCandle(
     long Volume
 );
 
+public record FinnhubMetrics(
+    decimal? YtdReturn,
+    decimal? Return5D,
+    decimal? Return13W,
+    decimal? Return26W,
+    decimal? Return52W,
+    decimal? High52W,
+    decimal? Low52W,
+    string? High52WDate,
+    string? Low52WDate
+);
+
 public record FinnhubProfile(
     string Name,
     string Exchange,
@@ -40,6 +52,7 @@ public interface IFinnhubService
 {
     Task<FinnhubQuote?> GetQuoteAsync(string symbol);
     Task<FinnhubProfile?> GetProfileAsync(string symbol);
+    Task<FinnhubMetrics?> GetMetricsAsync(string symbol);
     Task<IList<FinnhubSearchResult>> SearchAsync(string query);
     Task<IList<FinnhubCandle>> GetEodPricesAsync(string symbol, DateTime from, DateTime to);
 }
