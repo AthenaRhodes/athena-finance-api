@@ -12,6 +12,7 @@ namespace AthenaFinance.Api.Controllers;
 public class AdminController(
     AppDbContext db,
     IFinnhubService finnhub,
+    IForexService forex,
     IPriceRepository priceRepo,
     ILogger<AdminController> logger) : ControllerBase
 {
@@ -47,33 +48,54 @@ public class AdminController(
         {
             try
             {
-                var quote = await finnhub.GetQuoteAsync(security.Symbol);
-                if (quote is null)
+                decimal close;
+                decimal? marketCap = null;
+
+                if (security.AssetType == AssetType.Forex)
                 {
-                    results.Add(new { security.Symbol, status = "skipped", reason = "no quote" });
-                    continue;
+                    var parsed = IForexService.ParseSymbol(security.Symbol);
+                    if (parsed is null)
+                    {
+                        results.Add(new { security.Symbol, status = "skipped", reason = "invalid forex symbol format" });
+                        continue;
+                    }
+                    var rate = await forex.GetHistoricalRateAsync(parsed.Value.Base, parsed.Value.Quote, targetDate);
+                    if (rate is null)
+                    {
+                        results.Add(new { security.Symbol, status = "skipped", reason = "no rate from Frankfurter" });
+                        continue;
+                    }
+                    close = rate.Rate;
+                }
+                else
+                {
+                    var quote = await finnhub.GetQuoteAsync(security.Symbol);
+                    if (quote is null)
+                    {
+                        results.Add(new { security.Symbol, status = "skipped", reason = "no quote" });
+                        continue;
+                    }
+                    close = quote.PreviousClose;
+                    var isEquity = security.AssetType == AssetType.Equity;
+                    var profile = isEquity ? await finnhub.GetProfileAsync(security.Symbol) : null;
+                    marketCap = profile?.MarketCapMillions;
                 }
 
-                var isEquity = security.AssetType == AssetType.Equity;
-                var profile = isEquity ? await finnhub.GetProfileAsync(security.Symbol) : null;
-
-                // Free tier: use previousClose as EOD close.
-                // High/Low not available historically — stored as 0 to indicate missing.
                 await priceRepo.UpsertAsync(security.Id, [new EodPrice
                 {
                     Date = targetDate,
-                    Open = quote.PreviousClose,
-                    High = 0,
-                    Low = 0,
-                    Close = quote.PreviousClose,
+                    Open = close,
+                    High = close,
+                    Low = close,
+                    Close = close,
                     Volume = 0,
-                    MarketCapMillions = profile?.MarketCapMillions
+                    MarketCapMillions = marketCap
                 }]);
 
                 logger.LogInformation("Backfill stored: {Symbol} {Date} close={Close}",
-                    security.Symbol, targetDate, quote.PreviousClose);
+                    security.Symbol, targetDate, close);
 
-                results.Add(new { security.Symbol, status = "ok", date = targetDate, close = quote.PreviousClose });
+                results.Add(new { security.Symbol, status = "ok", date = targetDate, close });
 
                 await Task.Delay(300); // rate limit courtesy
             }

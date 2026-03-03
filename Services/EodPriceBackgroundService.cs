@@ -66,6 +66,7 @@ public class EodPriceBackgroundService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var finnhub = scope.ServiceProvider.GetRequiredService<IFinnhubService>();
+        var forexSvc = scope.ServiceProvider.GetRequiredService<IForexService>();
         var priceRepo = scope.ServiceProvider.GetRequiredService<IPriceRepository>();
 
         var securities = await db.Securities
@@ -81,25 +82,44 @@ public class EodPriceBackgroundService(
         {
             try
             {
-                var quote = await finnhub.GetQuoteAsync(security.Symbol);
-                if (quote is null) continue;
+                decimal close = 0;
+                decimal high = 0;
+                decimal low = 0;
+                decimal? marketCap = null;
 
-                var isEquity = security.AssetType == AssetType.Equity;
-                var profile = isEquity ? await finnhub.GetProfileAsync(security.Symbol) : null;
+                if (security.AssetType == AssetType.Forex)
+                {
+                    var parsed = IForexService.ParseSymbol(security.Symbol);
+                    if (parsed is null) continue;
+                    var rate = await forexSvc.GetHistoricalRateAsync(parsed.Value.Base, parsed.Value.Quote, date);
+                    if (rate is null) continue;
+                    close = high = low = rate.Rate;
+                }
+                else
+                {
+                    var quote = await finnhub.GetQuoteAsync(security.Symbol);
+                    if (quote is null) continue;
+                    close = quote.PreviousClose;
+                    high = quote.High;
+                    low = quote.Low;
+                    var isEquity = security.AssetType == AssetType.Equity;
+                    var profile = isEquity ? await finnhub.GetProfileAsync(security.Symbol) : null;
+                    marketCap = profile?.MarketCapMillions;
+                }
 
                 await priceRepo.UpsertAsync(security.Id, [new EodPrice
                 {
                     Date = date,
-                    Open = quote.Open,
-                    High = quote.High,
-                    Low = quote.Low,
-                    Close = quote.PreviousClose, // After close, previousClose = today's settled EOD
+                    Open = close,
+                    High = high,
+                    Low = low,
+                    Close = close,
                     Volume = 0,
-                    MarketCapMillions = profile?.MarketCapMillions
+                    MarketCapMillions = marketCap
                 }]);
 
                 logger.LogInformation("EOD stored: {Symbol} close={Close} mcap={MCap}M",
-                    security.Symbol, quote.PreviousClose, profile?.MarketCapMillions);
+                    security.Symbol, close, marketCap);
 
                 // Be kind to Finnhub rate limits
                 await Task.Delay(500, ct);

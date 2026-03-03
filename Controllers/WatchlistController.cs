@@ -12,6 +12,7 @@ namespace AthenaFinance.Api.Controllers;
 public class WatchlistController(
     AppDbContext db,
     IFinnhubService finnhub,
+    IForexService forex,
     IPriceRepository priceRepo) : ControllerBase
 {
     [HttpGet]
@@ -26,16 +27,42 @@ public class WatchlistController(
 
         foreach (var item in items)
         {
-            // Live: only Day% (intraday, refreshes every 30s on frontend)
-            var quote = await finnhub.GetQuoteAsync(item.Security.Symbol);
+            var isEquity = item.Security.AssetType == AssetType.Equity;
+            var isForex  = item.Security.AssetType == AssetType.Forex;
 
-            // EOD: price, market cap from DB
+            // EOD from DB
             var eod = await priceRepo.GetLatestAsync(item.SecurityId);
 
-            // Profile + metrics for non-price display fields
-            var isEquity = item.Security.AssetType == AssetType.Equity;
-            var profile = isEquity ? await finnhub.GetProfileAsync(item.Security.Symbol) : null;
-            var metrics = isEquity ? await finnhub.GetMetricsAsync(item.Security.Symbol) : null;
+            // Live Day% + profile/metrics
+            decimal? dayChangePct = null;
+            string? industry = null;
+            string? logo = null;
+            decimal? ytdReturn = null;
+
+            if (isForex)
+            {
+                var parsed = IForexService.ParseSymbol(item.Security.Symbol);
+                if (parsed is not null)
+                {
+                    var (rates, yesterday) = await forex.GetRatesAsync(parsed.Value.Base, parsed.Value.Quote);
+                    if (rates is not null && yesterday is not null && yesterday.Rate != 0)
+                        dayChangePct = Math.Round((rates.Rate - yesterday.Rate) / yesterday.Rate * 100, 4);
+                }
+            }
+            else
+            {
+                var quote = await finnhub.GetQuoteAsync(item.Security.Symbol);
+                dayChangePct = quote?.PercentChange;
+
+                if (isEquity)
+                {
+                    var profile = await finnhub.GetProfileAsync(item.Security.Symbol);
+                    var metrics = await finnhub.GetMetricsAsync(item.Security.Symbol);
+                    industry = profile?.Industry;
+                    logo = profile?.Logo;
+                    ytdReturn = metrics?.YtdReturn;
+                }
+            }
 
             result.Add(new
             {
@@ -46,14 +73,9 @@ public class WatchlistController(
                 item.Security.MarketZone,
                 item.Security.Currency,
                 item.AddedAt,
-                Industry = profile?.Industry,
-                Logo = profile?.Logo,
-                // Live intraday — Day% only
-                Live = quote is null ? null : new
-                {
-                    DayChangePercent = quote.PercentChange,
-                },
-                // EOD from DB — price, market cap, date
+                Industry = industry,
+                Logo = logo,
+                Live = dayChangePct is null ? null : new { DayChangePercent = dayChangePct },
                 Eod = eod is null ? null : new
                 {
                     Date = eod.Date,
@@ -62,8 +84,7 @@ public class WatchlistController(
                     Low = eod.Low,
                     MarketCapMillions = eod.MarketCapMillions
                 },
-                // Performance metrics from Finnhub (based on EOD data on their side)
-                YtdReturn = metrics?.YtdReturn,
+                YtdReturn = ytdReturn,
             });
         }
 

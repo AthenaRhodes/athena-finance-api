@@ -37,6 +37,12 @@ builder.Services.AddHttpClient<IFinnhubService, FinnhubService>(client =>
     client.BaseAddress = new Uri("https://finnhub.io/api/v1/");
 });
 
+// HTTP Client for Frankfurter (forex rates — free, ECB official)
+builder.Services.AddHttpClient<IForexService, FrankfurterService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.frankfurter.app/");
+});
+
 // Repositories
 builder.Services.AddScoped<ISecurityRepository, SecurityRepository>();
 builder.Services.AddScoped<IPriceRepository, PriceRepository>();

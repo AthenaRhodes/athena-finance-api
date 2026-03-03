@@ -94,6 +94,22 @@
 
 ---
 
+## v0.1.0-beta.9 — 2026-03-04
+
+### Added
+- `IForexService` / `FrankfurterService` — forex rates via Frankfurter.app (free, no API key, ECB official daily rates)
+- Forex Day% calculated as today vs previous business day rate
+- Forex historical rates supported (used in backfill and background service)
+- `IForexService.ParseSymbol` — parses `OANDA:EUR_USD` → `("EUR", "USD")`
+
+### Fixed
+- Forex securities no longer crash with 403 — routed to Frankfurter instead of Finnhub `/quote`
+
+### Changed
+- `WatchlistController`, `EodPriceBackgroundService`, `AdminController` all branch on `AssetType.Forex` to use `IForexService`
+
+---
+
 ## v0.1.0-beta.8 — 2026-03-04
 
 ### Added
