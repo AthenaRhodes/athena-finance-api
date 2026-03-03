@@ -1,12 +1,13 @@
 using AthenaFinance.Api.Models;
 using AthenaFinance.Api.Repositories;
+using AthenaFinance.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AthenaFinance.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SecuritiesController(ISecurityRepository repo) : ControllerBase
+public class SecuritiesController(ISecurityRepository repo, IFinnhubService finnhub) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await repo.GetAllAsync());
@@ -23,15 +24,33 @@ public class SecuritiesController(ISecurityRepository repo) : ControllerBase
     {
         var existing = await repo.GetBySymbolAsync(request.Symbol);
         if (existing is not null)
-            return Conflict(new { message = $"Security '{request.Symbol}' already exists." });
+            return Conflict(new { message = $"Security '{request.Symbol}' already exists.", id = existing.Id });
+
+        // Auto-resolve name and exchange from Finnhub for equities
+        var name = request.Name;
+        var exchange = request.Exchange ?? string.Empty;
+        var currency = request.Currency ?? "USD";
+
+        if (request.AssetType == AssetType.Equity && string.IsNullOrWhiteSpace(name))
+        {
+            var profile = await finnhub.GetProfileAsync(request.Symbol);
+            if (profile is null)
+                return BadRequest(new { message = $"Symbol '{request.Symbol}' not found on Finnhub." });
+            name = profile.Name;
+            exchange = string.IsNullOrWhiteSpace(exchange) ? profile.Exchange : exchange;
+            currency = string.IsNullOrWhiteSpace(request.Currency) ? profile.Currency : currency;
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { message = "Could not resolve name for this symbol." });
 
         var security = new Security
         {
             Symbol = request.Symbol,
-            Name = request.Name,
+            Name = name,
             AssetType = request.AssetType,
-            Exchange = request.Exchange ?? string.Empty,
-            Currency = request.Currency ?? "USD"
+            Exchange = exchange,
+            Currency = currency
         };
 
         var created = await repo.CreateAsync(security);
@@ -48,8 +67,8 @@ public class SecuritiesController(ISecurityRepository repo) : ControllerBase
 
 public record CreateSecurityRequest(
     string Symbol,
-    string Name,
     AssetType AssetType,
+    string? Name,
     string? Exchange,
     string? Currency
 );

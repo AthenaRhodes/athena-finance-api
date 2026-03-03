@@ -34,6 +34,32 @@ public class FinnhubService(HttpClient httpClient, IConfiguration config, ILogge
         }
     }
 
+    public async Task<IList<FinnhubSearchResult>> SearchAsync(string query)
+    {
+        try
+        {
+            var response = await httpClient.GetAsync($"search?q={Uri.EscapeDataString(query)}&token={_apiKey}");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(json);
+            return doc.RootElement.GetProperty("result")
+                .EnumerateArray()
+                .Select(r => new FinnhubSearchResult(
+                    Symbol: r.GetProperty("symbol").GetString() ?? string.Empty,
+                    DisplaySymbol: r.GetProperty("displaySymbol").GetString() ?? string.Empty,
+                    Description: r.GetProperty("description").GetString() ?? string.Empty,
+                    Type: r.GetProperty("type").GetString() ?? string.Empty
+                ))
+                .Take(8)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to search for {Query}", query);
+            return [];
+        }
+    }
+
     public async Task<FinnhubProfile?> GetProfileAsync(string symbol)
     {
         try

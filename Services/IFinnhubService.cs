@@ -29,9 +29,17 @@ public record FinnhubProfile(
     decimal MarketCapMillions
 );
 
+public record FinnhubSearchResult(
+    string Symbol,
+    string DisplaySymbol,
+    string Description,
+    string Type
+);
+
 public interface IFinnhubService
 {
     Task<FinnhubQuote?> GetQuoteAsync(string symbol);
     Task<FinnhubProfile?> GetProfileAsync(string symbol);
+    Task<IList<FinnhubSearchResult>> SearchAsync(string query);
     Task<IList<FinnhubCandle>> GetEodPricesAsync(string symbol, DateTime from, DateTime to);
 }

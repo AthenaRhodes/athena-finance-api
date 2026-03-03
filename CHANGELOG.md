@@ -4,6 +4,18 @@
 
 ---
 
+## v0.1.0-beta.4 — 2026-03-03
+
+### Added
+- `GET /api/search?q=` — symbol/company search via Finnhub, returns top 8 results
+- `SecuritiesController` now auto-resolves name, exchange and currency from Finnhub profile when not provided (equities)
+- Returns `400` if symbol not found on Finnhub instead of creating a ghost record
+
+### Changed
+- `CreateSecurityRequest`: `Name` is now optional (auto-resolved for equities)
+
+---
+
 ## v0.1.0-beta.3 — 2026-03-03
 
 ### Added
