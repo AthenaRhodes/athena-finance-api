@@ -22,6 +22,9 @@ public class WatchlistController(AppDbContext db, IFinnhubService finnhub) : Con
         foreach (var item in items)
         {
             var quote = await finnhub.GetQuoteAsync(item.Security.Symbol);
+            var profile = item.Security.AssetType == Models.AssetType.Equity
+                ? await finnhub.GetProfileAsync(item.Security.Symbol)
+                : null;
             result.Add(new
             {
                 item.Id,
@@ -30,7 +33,10 @@ public class WatchlistController(AppDbContext db, IFinnhubService finnhub) : Con
                 item.Security.AssetType,
                 item.Security.Currency,
                 item.AddedAt,
-                Quote = quote
+                Quote = quote,
+                MarketCapMillions = profile?.MarketCapMillions,
+                Industry = profile?.Industry,
+                Logo = profile?.Logo
             });
         }
 

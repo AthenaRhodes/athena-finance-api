@@ -4,6 +4,14 @@
 
 ---
 
+## v0.1.0-beta.3 — 2026-03-03
+
+### Added
+- `GetProfileAsync` in `FinnhubService` — fetches company profile from Finnhub `/stock/profile2`
+- Watchlist response now includes `marketCapMillions`, `industry` and `logo` (Equity only)
+
+---
+
 ## v0.1.0-beta.2 — 2026-03-03
 
 ### Fixed

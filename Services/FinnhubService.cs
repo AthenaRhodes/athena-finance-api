@@ -34,6 +34,33 @@ public class FinnhubService(HttpClient httpClient, IConfiguration config, ILogge
         }
     }
 
+    public async Task<FinnhubProfile?> GetProfileAsync(string symbol)
+    {
+        try
+        {
+            var response = await httpClient.GetAsync($"stock/profile2?symbol={symbol}&token={_apiKey}");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(json);
+            var root = doc.RootElement;
+
+            return new FinnhubProfile(
+                Name: root.GetProperty("name").GetString() ?? symbol,
+                Exchange: root.GetProperty("exchange").GetString() ?? string.Empty,
+                Industry: root.GetProperty("finnhubIndustry").GetString() ?? string.Empty,
+                Currency: root.GetProperty("currency").GetString() ?? "USD",
+                Logo: root.GetProperty("logo").GetString() ?? string.Empty,
+                WebUrl: root.GetProperty("weburl").GetString() ?? string.Empty,
+                MarketCapMillions: root.GetProperty("marketCapitalization").GetDecimal()
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fetch profile for {Symbol}", symbol);
+            return null;
+        }
+    }
+
     public async Task<IList<FinnhubCandle>> GetEodPricesAsync(string symbol, DateTime from, DateTime to)
     {
         try
