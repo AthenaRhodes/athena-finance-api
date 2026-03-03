@@ -94,6 +94,16 @@
 
 ---
 
+## v0.1.0-beta.12 — 2026-03-04
+
+### Changed
+- Backfill now uses Polygon `/v2/aggs/ticker/{ticker}/prev` for proper OHLCV (free tier) — real open, high, low, close, volume instead of just `previousClose`
+- Market cap in backfill sourced from Polygon reference data (more precise than Finnhub profile)
+- Finnhub remains as fallback if Polygon returns no data
+- `sync-universe` endpoint requires Polygon paid plan — documented clearly
+
+---
+
 ## v0.1.0-beta.11 — 2026-03-04
 
 ### Added

@@ -53,6 +53,8 @@ public class AdminController(
                 decimal close;
                 decimal? marketCap = null;
 
+                decimal open = 0, high = 0, low = 0, volume = 0;
+
                 if (security.AssetType == AssetType.Forex)
                 {
                     var parsed = IForexService.ParseSymbol(security.Symbol);
@@ -67,37 +69,50 @@ public class AdminController(
                         results.Add(new { security.Symbol, status = "skipped", reason = "no rate from Frankfurter" });
                         continue;
                     }
-                    close = rate.Rate;
+                    close = open = high = low = rate.Rate;
                 }
                 else
                 {
-                    var quote = await finnhub.GetQuoteAsync(security.Symbol);
-                    if (quote is null)
+                    // Use Polygon for proper OHLCV (better than Finnhub previousClose only)
+                    var ohlc = await polygon.GetDailyOhlcAsync(security.Symbol, targetDate);
+                    if (ohlc is not null)
                     {
-                        results.Add(new { security.Symbol, status = "skipped", reason = "no quote" });
-                        continue;
+                        close = ohlc.Close; open = ohlc.Open;
+                        high = ohlc.High; low = ohlc.Low;
+                        volume = ohlc.Volume;
                     }
-                    close = quote.PreviousClose;
-                    var isEquity = security.AssetType == AssetType.Equity;
-                    var profile = isEquity ? await finnhub.GetProfileAsync(security.Symbol) : null;
-                    marketCap = profile?.MarketCapMillions;
+                    else
+                    {
+                        // Fallback to Finnhub previousClose
+                        var quote = await finnhub.GetQuoteAsync(security.Symbol);
+                        if (quote is null)
+                        {
+                            results.Add(new { security.Symbol, status = "skipped", reason = "no data from Polygon or Finnhub" });
+                            continue;
+                        }
+                        close = open = high = low = quote.PreviousClose;
+                    }
+
+                    // Market cap from Polygon reference (more precise than Finnhub)
+                    var detail = await polygon.GetTickerDetailAsync(security.Symbol);
+                    marketCap = detail?.MarketCap;
                 }
 
                 await priceRepo.UpsertAsync(security.Id, [new EodPrice
                 {
                     Date = targetDate,
-                    Open = close,
-                    High = close,
-                    Low = close,
+                    Open = open,
+                    High = high,
+                    Low = low,
                     Close = close,
-                    Volume = 0,
+                    Volume = (long)volume,
                     MarketCapMillions = marketCap
                 }]);
 
-                logger.LogInformation("Backfill stored: {Symbol} {Date} close={Close}",
-                    security.Symbol, targetDate, close);
+                logger.LogInformation("Backfill stored: {Symbol} {Date} O={Open} H={High} L={Low} C={Close}",
+                    security.Symbol, targetDate, open, high, low, close);
 
-                results.Add(new { security.Symbol, status = "ok", date = targetDate, close });
+                results.Add(new { security.Symbol, status = "ok", date = targetDate, open, high, low, close, marketCap });
 
                 await Task.Delay(300); // rate limit courtesy
             }
