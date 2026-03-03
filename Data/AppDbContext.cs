@@ -24,6 +24,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(p => p.High).HasPrecision(18, 6);
             e.Property(p => p.Low).HasPrecision(18, 6);
             e.Property(p => p.Close).HasPrecision(18, 6);
+            e.Property(p => p.MarketCapMillions).HasPrecision(24, 6);
         });
     }
 }

@@ -11,5 +11,6 @@ public class EodPrice
     public decimal Low { get; set; }
     public decimal Close { get; set; }
     public long Volume { get; set; }
+    public decimal? MarketCapMillions { get; set; }
     public DateTime FetchedAt { get; set; } = DateTime.UtcNow;
 }

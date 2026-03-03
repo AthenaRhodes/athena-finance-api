@@ -4,6 +4,17 @@
 
 ---
 
+## v0.1.0-beta.6 — 2026-03-03
+
+### Added
+- `MarketCapMillions` column added to `EodPrices` table (migration: `AddMarketCapToEodPrice`)
+- Watchlist `GET` now auto-upserts today's daily snapshot (price, high, low, market cap) on every refresh — no manual trigger needed
+
+### Changed
+- `EodPrice` model: `MarketCapMillions` added as nullable decimal
+
+---
+
 ## v0.1.0-beta.5 — 2026-03-03
 
 ### Added
