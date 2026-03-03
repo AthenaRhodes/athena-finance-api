@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>athena_finance_api</RootNamespace>
-    <Version>0.1.0-beta.12</Version>
+    <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0</AssemblyVersion>
   </PropertyGroup>
 
