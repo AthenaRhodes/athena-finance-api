@@ -94,6 +94,23 @@
 
 ---
 
+## v0.1.0-beta.11 — 2026-03-04
+
+### Added
+- `IPolygonService` / `PolygonService` — Polygon.io integration:
+  - `GetAllSnapshotsAsync()` — bulk US snapshot (all ~18k tickers, one API call)
+  - `GetDailyOhlcAsync()` — historical daily OHLCV per ticker
+  - `GetTickerDetailAsync()` — name, market cap, type per ticker
+  - `GetAllTickersAsync()` — full paginated ticker reference list
+- `UniverseSyncBackgroundService` — runs daily at 22:30 UTC; fetches full Polygon snapshot, syncs Securities master list, stores EOD prices for entire US universe
+- `POST /api/admin/sync-universe?date=` — manual trigger for universe sync
+- `Polygon:ApiKey` config key in `appsettings.json`
+
+### Architecture
+- Two-provider strategy formalised: Finnhub (watchlist-level) + Polygon (universe-scale batch)
+
+---
+
 ## v0.1.0-beta.10 — 2026-03-04
 
 ### Added

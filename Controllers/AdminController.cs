@@ -4,6 +4,7 @@ using AthenaFinance.Api.Repositories;
 using AthenaFinance.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
 
 namespace AthenaFinance.Api.Controllers;
 
@@ -13,6 +14,7 @@ public class AdminController(
     AppDbContext db,
     IFinnhubService finnhub,
     IForexService forex,
+    IPolygonService polygon,
     IPriceRepository priceRepo,
     ILogger<AdminController> logger) : ControllerBase
 {
@@ -107,5 +109,74 @@ public class AdminController(
         }
 
         return Ok(new { date = targetDate, stored = results.Count(r => r.ToString()!.Contains("ok")), results });
+    }
+
+    /// <summary>
+    /// Trigger a full Polygon universe sync for today (or a specific date).
+    /// Fetches all US stock EOD prices in one bulk Polygon call.
+    /// </summary>
+    [HttpPost("sync-universe")]
+    public async Task<IActionResult> SyncUniverse([FromQuery] DateOnly? date)
+    {
+        var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var sw = Stopwatch.StartNew();
+
+        logger.LogInformation("Manual universe sync triggered for {Date}", targetDate);
+
+        var snapshots = await polygon.GetAllSnapshotsAsync();
+        if (snapshots.Count == 0)
+            return StatusCode(503, new { message = "No data returned from Polygon. Check API key or try later." });
+
+        // Upsert securities
+        var existingSymbols = await db.Securities
+            .Where(s => s.AssetType == AssetType.Equity)
+            .Select(s => new { s.Id, s.Symbol })
+            .ToDictionaryAsync(s => s.Symbol, s => s.Id);
+
+        var newSecurities = snapshots
+            .Where(s => !existingSymbols.ContainsKey(s.Ticker) && !string.IsNullOrEmpty(s.Ticker))
+            .Select(s => new Security
+            {
+                Symbol = s.Ticker,
+                Name = s.Ticker,
+                AssetType = AssetType.Equity,
+                MarketZone = MarketZone.US,
+                Currency = "USD"
+            }).ToList();
+
+        if (newSecurities.Count > 0)
+        {
+            db.Securities.AddRange(newSecurities);
+            await db.SaveChangesAsync();
+            foreach (var s in newSecurities)
+                existingSymbols[s.Symbol] = s.Id;
+        }
+
+        // Upsert EOD prices
+        var priceCount = 0;
+        foreach (var s in snapshots.Where(s => existingSymbols.ContainsKey(s.Ticker) && s.Close > 0))
+        {
+            await priceRepo.UpsertAsync(existingSymbols[s.Ticker], [new EodPrice
+            {
+                Date = targetDate,
+                Open = s.Open,
+                High = s.High,
+                Low = s.Low,
+                Close = s.Close,
+                Volume = s.Volume,
+                MarketCapMillions = s.MarketCap
+            }]);
+            priceCount++;
+        }
+
+        sw.Stop();
+        return Ok(new
+        {
+            date = targetDate,
+            snapshotsFetched = snapshots.Count,
+            newSecurities = newSecurities.Count,
+            pricesStored = priceCount,
+            elapsedMs = sw.ElapsedMilliseconds
+        });
     }
 }

@@ -43,12 +43,20 @@ builder.Services.AddHttpClient<IForexService, FrankfurterService>(client =>
     client.BaseAddress = new Uri("https://api.frankfurter.app/");
 });
 
+// HTTP Client for Polygon.io (universe-scale EOD data)
+builder.Services.AddHttpClient<IPolygonService, PolygonService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.polygon.io/");
+    client.Timeout = TimeSpan.FromMinutes(2); // Bulk snapshot can be large
+});
+
 // Repositories
 builder.Services.AddScoped<ISecurityRepository, SecurityRepository>();
 builder.Services.AddScoped<IPriceRepository, PriceRepository>();
 
 // Background services
 builder.Services.AddHostedService<EodPriceBackgroundService>();
+builder.Services.AddHostedService<UniverseSyncBackgroundService>();
 
 // CORS for local frontend dev
 builder.Services.AddCors(options =>
