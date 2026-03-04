@@ -5,7 +5,7 @@ namespace AthenaFinance.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SearchController(IFinnhubService finnhub) : ControllerBase
+public class SearchController(MarketDataAggregator aggregator) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search([FromQuery] string q)
@@ -13,7 +13,7 @@ public class SearchController(IFinnhubService finnhub) : ControllerBase
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
             return Ok(Array.Empty<object>());
 
-        var results = await finnhub.SearchAsync(q);
+        var results = await aggregator.SearchAsync(q);
         return Ok(results);
     }
 }

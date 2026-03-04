@@ -11,7 +11,7 @@ namespace AthenaFinance.Api.Controllers;
 [Route("api/[controller]")]
 public class WatchlistController(
     AppDbContext db,
-    IFinnhubService finnhub,
+    MarketDataAggregator aggregator,
     IForexService forex,
     IPriceRepository priceRepo) : ControllerBase
 {
@@ -35,9 +35,9 @@ public class WatchlistController(
 
             // Live Day% + profile/metrics
             decimal? dayChangePct = null;
-            string? industry = null;
-            string? logo = null;
-            decimal? ytdReturn = null;
+            string?  industry     = null;
+            string?  logo         = null;
+            decimal? ytdReturn    = null;
 
             if (isForex)
             {
@@ -52,16 +52,19 @@ public class WatchlistController(
             }
             else
             {
-                var quote = await finnhub.GetQuoteAsync(item.Security.Symbol);
+                var sourceId     = item.Security.PriceSourceId ?? "finnhub";
+                var sourceSymbol = item.Security.EffectiveSourceSymbol;
+
+                var quote = await aggregator.GetQuoteAsync(sourceId, sourceSymbol);
                 dayChangePct = quote?.PercentChange;
 
                 if (isEquity)
                 {
-                    var profile = await finnhub.GetProfileAsync(item.Security.Symbol);
-                    var metrics = await finnhub.GetMetricsAsync(item.Security.Symbol);
+                    var (profile, _, _) = await aggregator.ResolveProfileAsync(
+                        sourceSymbol, item.Security.PriceSourceId, item.Security.PriceSourceSymbol);
                     industry = profile?.Industry;
-                    logo = profile?.Logo;
-                    ytdReturn = metrics?.YtdReturn;
+                    logo     = profile?.Logo;
+                    ytdReturn = await aggregator.GetYtdReturnAsync(sourceId, sourceSymbol);
                 }
             }
 
@@ -74,15 +77,16 @@ public class WatchlistController(
                 item.Security.MarketZone,
                 item.Security.Currency,
                 item.AddedAt,
+                item.Security.PriceSourceId,
                 Industry = industry,
-                Logo = logo,
-                Live = dayChangePct is null ? null : new { DayChangePercent = dayChangePct },
-                Eod = eod is null ? null : new
+                Logo     = logo,
+                Live     = dayChangePct is null ? null : new { DayChangePercent = dayChangePct },
+                Eod      = eod is null ? null : new
                 {
-                    Date = eod.Date,
-                    Close = eod.Close,
-                    High = eod.High,
-                    Low = eod.Low,
+                    Date              = eod.Date,
+                    Close             = eod.Close,
+                    High              = eod.High,
+                    Low               = eod.Low,
                     MarketCapMillions = eod.MarketCapMillions
                 },
                 YtdReturn = ytdReturn,

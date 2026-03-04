@@ -11,6 +11,19 @@ public class Security
     public MarketZone MarketZone { get; set; } = MarketZone.US;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Which market data provider to use for price refresh (e.g. "finnhub", "yahoo").</summary>
+    public string? PriceSourceId { get; set; }
+
+    /// <summary>
+    /// The symbol in the provider's notation if different from Symbol (e.g. Yahoo uses "MC.PA" for LVMH).
+    /// Null means use Symbol as-is.
+    /// </summary>
+    public string? PriceSourceSymbol { get; set; }
+
+    /// <summary>Symbol to use when fetching prices from the stored provider.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string EffectiveSourceSymbol => PriceSourceSymbol ?? Symbol;
+
     public ICollection<EodPrice> Prices { get; set; } = new List<EodPrice>();
     public ICollection<WatchlistItem> WatchlistItems { get; set; } = new List<WatchlistItem>();
 }

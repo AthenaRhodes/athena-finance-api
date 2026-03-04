@@ -8,6 +8,7 @@ namespace AthenaFinance.Api.Services;
 /// <summary>
 /// Runs hourly. After each market zone closes, fetches and stores the EOD
 /// price (close, high, low) and market cap for all securities in that zone.
+/// Uses each security's stored PriceSourceId to pick the right provider.
 /// </summary>
 public class EodPriceBackgroundService(
     IServiceScopeFactory scopeFactory,
@@ -22,7 +23,6 @@ public class EodPriceBackgroundService(
         { MarketZone.FX,   new TimeOnly(23, 00) }, // End of NY FX session
     };
 
-    // Track which zones we've already fetched for today
     private readonly Dictionary<MarketZone, DateOnly> _lastFetched = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -31,7 +31,6 @@ public class EodPriceBackgroundService(
 
         using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
 
-        // Run once on startup, then every hour
         await TryFetchEodAsync(stoppingToken);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
@@ -42,17 +41,15 @@ public class EodPriceBackgroundService(
 
     private async Task TryFetchEodAsync(CancellationToken ct)
     {
-        var nowUtc = DateTime.UtcNow;
-        var todayUtc = DateOnly.FromDateTime(nowUtc);
+        var nowUtc     = DateTime.UtcNow;
+        var todayUtc   = DateOnly.FromDateTime(nowUtc);
         var currentTime = TimeOnly.FromDateTime(nowUtc);
 
-        // Skip weekends
         if (nowUtc.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
             return;
 
         foreach (var (zone, eodTime) in EodTimes)
         {
-            // Only fetch if market has closed today AND we haven't fetched for today yet
             if (currentTime < eodTime) continue;
             if (_lastFetched.TryGetValue(zone, out var lastDate) && lastDate == todayUtc) continue;
 
@@ -63,11 +60,11 @@ public class EodPriceBackgroundService(
 
     private async Task FetchZoneEodAsync(MarketZone zone, DateOnly date, CancellationToken ct)
     {
-        using var scope = scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var finnhub = scope.ServiceProvider.GetRequiredService<IFinnhubService>();
-        var forexSvc = scope.ServiceProvider.GetRequiredService<IForexService>();
-        var priceRepo = scope.ServiceProvider.GetRequiredService<IPriceRepository>();
+        using var scope     = scopeFactory.CreateScope();
+        var db              = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var aggregator      = scope.ServiceProvider.GetRequiredService<MarketDataAggregator>();
+        var forexSvc        = scope.ServiceProvider.GetRequiredService<IForexService>();
+        var priceRepo       = scope.ServiceProvider.GetRequiredService<IPriceRepository>();
 
         var securities = await db.Securities
             .Where(s => s.MarketZone == zone)
@@ -78,13 +75,17 @@ public class EodPriceBackgroundService(
         logger.LogInformation("Fetching EOD prices for {Zone} ({Count} securities) — {Date}",
             zone, securities.Count, date);
 
+        // Fetch window: from yesterday to today (gives us last candle)
+        var fromDt = date.ToDateTime(TimeOnly.MinValue).AddDays(-1);
+        var toDt   = date.ToDateTime(TimeOnly.MaxValue);
+
         foreach (var security in securities)
         {
             try
             {
-                decimal close = 0;
-                decimal high = 0;
-                decimal low = 0;
+                decimal  close     = 0;
+                decimal  high      = 0;
+                decimal  low       = 0;
                 decimal? marketCap = null;
 
                 if (security.AssetType == AssetType.Forex)
@@ -97,32 +98,52 @@ public class EodPriceBackgroundService(
                 }
                 else
                 {
-                    var quote = await finnhub.GetQuoteAsync(security.Symbol);
-                    if (quote is null) continue;
-                    close = quote.PreviousClose;
-                    high = quote.High;
-                    low = quote.Low;
-                    var isEquity = security.AssetType == AssetType.Equity;
-                    var profile = isEquity ? await finnhub.GetProfileAsync(security.Symbol) : null;
-                    marketCap = profile?.MarketCapMillions;
+                    var sourceId     = security.PriceSourceId ?? "finnhub";
+                    var sourceSymbol = security.EffectiveSourceSymbol;
+
+                    // Try EOD candles first (preferred — proper OHLCV)
+                    var candles = await aggregator.GetEodPricesAsync(sourceId, sourceSymbol, fromDt, toDt);
+                    if (candles.Count > 0)
+                    {
+                        var last = candles.Last();
+                        close = last.Close;
+                        high  = last.High;
+                        low   = last.Low;
+                    }
+                    else
+                    {
+                        // Fallback: use live quote's previous close
+                        var quote = await aggregator.GetQuoteAsync(sourceId, sourceSymbol);
+                        if (quote is null) continue;
+                        close = quote.PreviousClose ?? quote.CurrentPrice;
+                        high  = close;
+                        low   = close;
+                    }
+
+                    // Market cap (best-effort from profile)
+                    if (security.AssetType == AssetType.Equity)
+                    {
+                        var (profile, _, _) = await aggregator.ResolveProfileAsync(
+                            sourceSymbol, security.PriceSourceId, security.PriceSourceSymbol);
+                        marketCap = profile?.MarketCapMillions;
+                    }
                 }
 
                 await priceRepo.UpsertAsync(security.Id, [new EodPrice
                 {
-                    Date = date,
-                    Open = close,
-                    High = high,
-                    Low = low,
-                    Close = close,
-                    Volume = 0,
+                    Date             = date,
+                    Open             = close,
+                    High             = high,
+                    Low              = low,
+                    Close            = close,
+                    Volume           = 0,
                     MarketCapMillions = marketCap
                 }]);
 
-                logger.LogInformation("EOD stored: {Symbol} close={Close} mcap={MCap}M",
-                    security.Symbol, close, marketCap);
+                logger.LogInformation("EOD stored: {Symbol} (via {Provider}) close={Close} mcap={MCap}M",
+                    security.Symbol, security.PriceSourceId ?? "finnhub", close, marketCap);
 
-                // Be kind to Finnhub rate limits
-                await Task.Delay(500, ct);
+                await Task.Delay(300, ct); // gentle rate limit
             }
             catch (Exception ex)
             {

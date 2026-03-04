@@ -37,6 +37,21 @@ builder.Services.AddHttpClient<IFinnhubService, FinnhubService>(client =>
     client.BaseAddress = new Uri("https://finnhub.io/api/v1/");
 });
 
+// HTTP Client for Yahoo Finance (unofficial, no key — global coverage)
+builder.Services.AddHttpClient<YahooFinanceService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (compatible; AthenaFinance/1.0)");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
+
+// Market data provider chain (Finnhub priority 1, Yahoo priority 2)
+builder.Services.AddScoped<FinnhubMarketDataProvider>();
+builder.Services.AddScoped<YahooFinanceService>();
+builder.Services.AddScoped<IMarketDataProvider>(sp => sp.GetRequiredService<FinnhubMarketDataProvider>());
+builder.Services.AddScoped<IMarketDataProvider>(sp => sp.GetRequiredService<YahooFinanceService>());
+builder.Services.AddScoped<MarketDataAggregator>();
+
 // HTTP Client for Frankfurter (forex rates — free, ECB official)
 builder.Services.AddHttpClient<IForexService, FrankfurterService>(client =>
 {

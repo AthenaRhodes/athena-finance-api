@@ -7,7 +7,7 @@ namespace AthenaFinance.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SecuritiesController(ISecurityRepository repo, IFinnhubService finnhub) : ControllerBase
+public class SecuritiesController(ISecurityRepository repo, MarketDataAggregator aggregator) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await repo.GetAllAsync());
@@ -26,39 +26,61 @@ public class SecuritiesController(ISecurityRepository repo, IFinnhubService finn
         if (existing is not null)
             return Conflict(new { message = $"Security '{request.Symbol}' already exists.", id = existing.Id });
 
-        // Auto-resolve name and exchange from Finnhub for equities
-        var name = request.Name;
+        var name     = request.Name;
         var exchange = request.Exchange ?? string.Empty;
         var currency = request.Currency ?? "USD";
+        string? resolvedProviderId     = request.PriceSourceId;
+        string? resolvedProviderSymbol = request.PriceSourceSymbol;
 
         if (request.AssetType == AssetType.Equity && string.IsNullOrWhiteSpace(name))
         {
-            var profile = await finnhub.GetProfileAsync(request.Symbol);
+            // Try the preferred provider first (passed by the frontend from search results),
+            // then fall back through the full provider chain.
+            var (profile, foundProviderId, foundSymbol) = await aggregator.ResolveProfileAsync(
+                request.Symbol,
+                request.PriceSourceId,
+                request.PriceSourceSymbol);
+
             if (profile is null)
-                return BadRequest(new { message = $"Symbol '{request.Symbol}' not found on Finnhub." });
-            name = profile.Name;
+                return BadRequest(new { message = $"Symbol '{request.Symbol}' not found on any data provider." });
+
+            name     = profile.Name;
             exchange = string.IsNullOrWhiteSpace(exchange) ? profile.Exchange : exchange;
             currency = string.IsNullOrWhiteSpace(request.Currency) ? profile.Currency : currency;
+            resolvedProviderId     = foundProviderId;
+            resolvedProviderSymbol = foundSymbol;
         }
 
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { message = "Could not resolve name for this symbol." });
 
-        // Default market zone by asset type if not specified
         var marketZone = request.MarketZone ?? request.AssetType switch
         {
             AssetType.Forex => MarketZone.FX,
             _ => MarketZone.US
         };
 
+        // Only store PriceSourceSymbol if it differs from Symbol (saves space, avoids confusion)
+        var symbolUpper = request.Symbol.ToUpperInvariant();
+        var effectiveProviderSymbol = resolvedProviderSymbol != symbolUpper ? resolvedProviderSymbol : null;
+
+        // For Forex, use Frankfurter (ECB) — no market data provider needed for lookup
+        if (request.AssetType == AssetType.Forex)
+        {
+            resolvedProviderId     = "frankfurter";
+            effectiveProviderSymbol = null;
+        }
+
         var security = new Security
         {
-            Symbol = request.Symbol,
-            Name = name,
-            AssetType = request.AssetType,
-            Exchange = exchange,
-            Currency = currency,
-            MarketZone = marketZone
+            Symbol         = symbolUpper,
+            Name           = name,
+            AssetType      = request.AssetType,
+            Exchange       = exchange,
+            Currency       = currency,
+            MarketZone     = marketZone,
+            PriceSourceId  = resolvedProviderId,
+            PriceSourceSymbol = effectiveProviderSymbol
         };
 
         var created = await repo.CreateAsync(security);
@@ -79,5 +101,7 @@ public record CreateSecurityRequest(
     string? Name,
     string? Exchange,
     string? Currency,
-    MarketZone? MarketZone
+    MarketZone? MarketZone,
+    string? PriceSourceId,       // from search result: "finnhub" or "yahoo"
+    string? PriceSourceSymbol    // provider-specific symbol, e.g. "MC.PA"
 );
