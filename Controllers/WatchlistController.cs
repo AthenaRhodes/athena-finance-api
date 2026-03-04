@@ -19,7 +19,7 @@ public class WatchlistController(
     public async Task<IActionResult> GetWatchlist()
     {
         var items = await db.WatchlistItems
-            .Include(w => w.Security)
+            .Include(w => w.Security).ThenInclude(s => s.PriceSource)
             .OrderBy(w => w.Security.Symbol)
             .ToListAsync();
 
@@ -52,7 +52,7 @@ public class WatchlistController(
             }
             else
             {
-                var sourceId     = item.Security.PriceSourceId ?? "finnhub";
+                var sourceId     = item.Security.EffectiveSourceCode;
                 var sourceSymbol = item.Security.EffectiveSourceSymbol;
 
                 var quote = await aggregator.GetQuoteAsync(sourceId, sourceSymbol);
@@ -61,7 +61,7 @@ public class WatchlistController(
                 if (isEquity)
                 {
                     var (profile, _, _) = await aggregator.ResolveProfileAsync(
-                        sourceSymbol, item.Security.PriceSourceId, item.Security.PriceSourceSymbol);
+                        sourceSymbol, item.Security.PriceSource?.Code, item.Security.PriceSourceSymbol);
                     industry = profile?.Industry;
                     logo     = profile?.Logo;
                     ytdReturn = await aggregator.GetYtdReturnAsync(sourceId, sourceSymbol);
@@ -77,7 +77,8 @@ public class WatchlistController(
                 item.Security.MarketZone,
                 item.Security.Currency,
                 item.AddedAt,
-                item.Security.PriceSourceId,
+                PriceSourceId   = item.Security.PriceSourceId,
+                PriceSourceCode = item.Security.PriceSource?.Code,
                 Industry = industry,
                 Logo     = logo,
                 Live     = dayChangePct is null ? null : new { DayChangePercent = dayChangePct },

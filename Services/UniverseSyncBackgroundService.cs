@@ -71,11 +71,12 @@ public class UniverseSyncBackgroundService(
                 .Where(s => !existingSymbols.ContainsKey(s.Ticker) && !string.IsNullOrEmpty(s.Ticker))
                 .Select(s => new Security
                 {
-                    Symbol = s.Ticker,
-                    Name = s.Ticker, // Will be enriched by ticker detail sync separately
-                    AssetType = AssetType.Equity,
-                    MarketZone = MarketZone.US,
-                    Currency = "USD"
+                    Symbol        = s.Ticker,
+                    Name          = s.Ticker, // Will be enriched by ticker detail sync separately
+                    AssetType     = AssetType.Equity,
+                    MarketZone    = MarketZone.US,
+                    Currency      = "USD",
+                    PriceSourceId = 4 // Polygon.io (bulk US universe)
                 }).ToList();
 
             if (newSymbols.Count > 0)

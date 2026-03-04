@@ -67,6 +67,7 @@ public class EodPriceBackgroundService(
         var priceRepo       = scope.ServiceProvider.GetRequiredService<IPriceRepository>();
 
         var securities = await db.Securities
+            .Include(s => s.PriceSource)
             .Where(s => s.MarketZone == zone)
             .ToListAsync(ct);
 
@@ -98,7 +99,7 @@ public class EodPriceBackgroundService(
                 }
                 else
                 {
-                    var sourceId     = security.PriceSourceId ?? "finnhub";
+                    var sourceId     = security.EffectiveSourceCode;
                     var sourceSymbol = security.EffectiveSourceSymbol;
 
                     // Try EOD candles first (preferred — proper OHLCV)
@@ -124,7 +125,7 @@ public class EodPriceBackgroundService(
                     if (security.AssetType == AssetType.Equity)
                     {
                         var (profile, _, _) = await aggregator.ResolveProfileAsync(
-                            sourceSymbol, security.PriceSourceId, security.PriceSourceSymbol);
+                            sourceSymbol, security.PriceSource?.Code, security.PriceSourceSymbol);
                         marketCap = profile?.MarketCapMillions;
                     }
                 }
@@ -141,7 +142,7 @@ public class EodPriceBackgroundService(
                 }]);
 
                 logger.LogInformation("EOD stored: {Symbol} (via {Provider}) close={Close} mcap={MCap}M",
-                    security.Symbol, security.PriceSourceId ?? "finnhub", close, marketCap);
+                    security.Symbol, security.EffectiveSourceCode, close, marketCap);
 
                 await Task.Delay(300, ct); // gentle rate limit
             }

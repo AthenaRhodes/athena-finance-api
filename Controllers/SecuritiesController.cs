@@ -1,13 +1,18 @@
+using AthenaFinance.Api.Data;
 using AthenaFinance.Api.Models;
 using AthenaFinance.Api.Repositories;
 using AthenaFinance.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AthenaFinance.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SecuritiesController(ISecurityRepository repo, MarketDataAggregator aggregator) : ControllerBase
+public class SecuritiesController(
+    ISecurityRepository repo,
+    AppDbContext db,
+    MarketDataAggregator aggregator) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await repo.GetAllAsync());
@@ -29,16 +34,14 @@ public class SecuritiesController(ISecurityRepository repo, MarketDataAggregator
         var name     = request.Name;
         var exchange = request.Exchange ?? string.Empty;
         var currency = request.Currency ?? "USD";
-        string? resolvedProviderId     = request.PriceSourceId;
+        string? resolvedCode          = request.PriceSourceCode;
         string? resolvedProviderSymbol = request.PriceSourceSymbol;
 
         if (request.AssetType == AssetType.Equity && string.IsNullOrWhiteSpace(name))
         {
-            // Try the preferred provider first (passed by the frontend from search results),
-            // then fall back through the full provider chain.
-            var (profile, foundProviderId, foundSymbol) = await aggregator.ResolveProfileAsync(
+            var (profile, foundCode, foundSymbol) = await aggregator.ResolveProfileAsync(
                 request.Symbol,
-                request.PriceSourceId,
+                request.PriceSourceCode,
                 request.PriceSourceSymbol);
 
             if (profile is null)
@@ -47,7 +50,7 @@ public class SecuritiesController(ISecurityRepository repo, MarketDataAggregator
             name     = profile.Name;
             exchange = string.IsNullOrWhiteSpace(exchange) ? profile.Exchange : exchange;
             currency = string.IsNullOrWhiteSpace(request.Currency) ? profile.Currency : currency;
-            resolvedProviderId     = foundProviderId;
+            resolvedCode           = foundCode;
             resolvedProviderSymbol = foundSymbol;
         }
 
@@ -60,26 +63,31 @@ public class SecuritiesController(ISecurityRepository repo, MarketDataAggregator
             _ => MarketZone.US
         };
 
-        // Only store PriceSourceSymbol if it differs from Symbol (saves space, avoids confusion)
-        var symbolUpper = request.Symbol.ToUpperInvariant();
-        var effectiveProviderSymbol = resolvedProviderSymbol != symbolUpper ? resolvedProviderSymbol : null;
-
-        // For Forex, use Frankfurter (ECB) — no market data provider needed for lookup
+        // For Forex, always use Frankfurter
         if (request.AssetType == AssetType.Forex)
-        {
-            resolvedProviderId     = "frankfurter";
-            effectiveProviderSymbol = null;
-        }
+            resolvedCode = "frankfurter";
+
+        // Resolve provider code → integer FK
+        var symbolUpper   = request.Symbol.ToUpperInvariant();
+        var providerRecord = resolvedCode is not null
+            ? await db.PriceProviders.FirstOrDefaultAsync(p => p.Code == resolvedCode)
+            : null;
+
+        // Only store PriceSourceSymbol when it genuinely differs from Symbol
+        var effectiveProviderSymbol =
+            resolvedProviderSymbol is not null && resolvedProviderSymbol != symbolUpper
+                ? resolvedProviderSymbol
+                : null;
 
         var security = new Security
         {
-            Symbol         = symbolUpper,
-            Name           = name,
-            AssetType      = request.AssetType,
-            Exchange       = exchange,
-            Currency       = currency,
-            MarketZone     = marketZone,
-            PriceSourceId  = resolvedProviderId,
+            Symbol            = symbolUpper,
+            Name              = name,
+            AssetType         = request.AssetType,
+            Exchange          = exchange,
+            Currency          = currency,
+            MarketZone        = marketZone,
+            PriceSourceId     = providerRecord?.Id,
             PriceSourceSymbol = effectiveProviderSymbol
         };
 
@@ -102,6 +110,6 @@ public record CreateSecurityRequest(
     string? Exchange,
     string? Currency,
     MarketZone? MarketZone,
-    string? PriceSourceId,       // from search result: "finnhub" or "yahoo"
+    string? PriceSourceCode,     // provider code from search result: "finnhub" | "yahoo"
     string? PriceSourceSymbol    // provider-specific symbol, e.g. "MC.PA"
 );
